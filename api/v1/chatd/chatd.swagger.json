@@ -1,0 +1,88 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "api/v1/chatd/chatd.proto",
+    "version": "version not set"
+  },
+  "schemes": [
+    "http",
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/messages/{room}": {
+      "post": {
+        "summary": "PublishMessage",
+        "description": "Post a message to a specific room. By default to the room \"all\"\n\nPossible business errors:\n - ErrInvalidMessage Message Provided is invalid",
+        "operationId": "PublishMessage",
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/chatdPublishMessageResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "room",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/chatdPublishMessageRequest"
+            }
+          }
+        ],
+        "tags": [
+          "ChatService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "chatdMessage": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Date of the message."
+        },
+        "writter": {
+          "type": "string",
+          "description": "Username of the writter."
+        },
+        "message": {
+          "type": "string",
+          "title": "Content of the message"
+        }
+      },
+      "description": "Message represents the structure of a message exchange over the wire."
+    },
+    "chatdPublishMessageRequest": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "$ref": "#/definitions/chatdMessage"
+        },
+        "room": {
+          "type": "string"
+        }
+      }
+    },
+    "chatdPublishMessageResponse": {
+      "type": "object"
+    }
+  }
+}

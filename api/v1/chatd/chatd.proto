@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package chat.v1.chatd;
+
+option go_package = "chatd";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// Message represents the structure of a message exchange over the wire.
+message Message {
+  // Date of the message.
+  google.protobuf.Timestamp date = 1;
+
+  // Username of the writter.
+  string writter = 2;
+
+  // Content of the message
+  string message = 3;
+}
+
+message PublishMessageRequest {
+  Message message = 1;
+  string room = 2;
+}
+
+message PublishMessageResponse {}
+
+service ChatService {
+
+  // PublishMessage
+  //
+  // Post a message to a specific room. By default to the room "all"
+  //
+  // Possible business errors:
+  //  - ErrInvalidMessage Message Provided is invalid
+  //
+  //
+  rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse) {
+    option (google.api.http) = {
+      post : "/v1/messages/{room}"
+      body : "*"
+    };
+  }
+}
