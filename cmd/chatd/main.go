@@ -10,8 +10,11 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	
+	chat_api_v1 "github.com/jhayotte/chat/api/v1/chatd"
+	chat_service_v1 "github.com/jhayotte/chat/service/v1/chat"
+
 	proxy_runtime "github.com/grpc-ecosystem/grpc-gateway/runtime"
-	chatd_v1 "github.com/jhayotte/chat/api/v1/chatd"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -34,8 +37,8 @@ var (
 )
 
 type server struct {
-	port        int
-	ip          string
+	bindHTTP    string
+	bindGRPC    string
 	storagePath string
 }
 
@@ -43,18 +46,14 @@ func init() {
 	// Logrus
 	logger = log.NewEntry(log.New())
 	logger = logger.WithFields(log.Fields{
-		"error":                 "",
-		"grpc.code":             "",
-		"grpc.method":           "",
-		"grpc.request.content":  "",
-		"grpc.response.content": "",
-		"grpc.service":          "",
-		"grpc.start_time":       "",
-		"grpc.time_ms":          "",
-		"peer.address":          "",
-		"request_id":            "",
-		"span.kind":             "",
-		"system":                "",
+		"error":                "",
+		"grpc.code":            "",
+		"grpc.method":          "",
+		"grpc.request.content": "",
+		"grpc.service":         "",
+		"grpc.start_time":      "",
+		"grpc.time_ms":         "",
+		"peer.address":         "",
 	})
 
 	grpc_logrus.ReplaceGrpcLogger(logger)
@@ -65,13 +64,17 @@ func main() {
 	errc := make(chan error)
 	defer close(errc)
 
-	lis, err := net.Listen("tcp", "0.0.0.0:2338")
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", "0.0.0.0:2338")
-	}
-
 	// Read configuration from a config file (ip/port/log all message into a log file)
 	// TODO...
+	s := server{
+		bindGRPC: "0.0.0.0:2338",
+		bindHTTP: "0.0.0.0:8080",
+	}
+
+	lis, err := net.Listen("tcp", s.bindGRPC)
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", s.bindGRPC)
+	}
 
 	// Decider alwaysLoggingDeciderServer.
 	alwaysLoggingDeciderServer := func(ctx context.Context, fullMethodName string, servingObject interface{}) bool {
@@ -79,22 +82,52 @@ func main() {
 	}
 
 	var grpcServer *grpc.Server
-	grpcServer = grpc.NewServer(grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(grpc_logrus.PayloadUnaryServerInterceptor(logger, alwaysLoggingDeciderServer))))
+	grpcServer = grpc.NewServer(grpc.UnaryInterceptor(
+		grpc_middleware.ChainUnaryServer(
+			grpc_logrus.PayloadUnaryServerInterceptor(logger, alwaysLoggingDeciderServer)
+		),
+	))
+	
 
 	// Create a context for easy cancellation
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
+	// Gracefully shut down on ctrl-c
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-interrupt
+		errc <- errors.New("received signal interrupt")
+	}()
+
+	// Register Chat service v1 and HTTP service handler
+	chatV1 := chat_service_v1.NewChatService()
+	
+	chat_api_v1.RegisterCampaignServiceServer(grpcServer, chatV1)
+
+	log.Println("Starting Chat service..")
+
+	go func() {
+		log.Println(fmt.Sprintf("Starting GRPC server on %s", s.bindGRPC))
+		errc <- errors.Wrap(grpcServer.Serve(lis), "Cannot start GRPC server")
+	}()
+
+	conn, err = grpc.Dial(s.bindGRPC, grpc.WithInsecure())
+	if err != nil {
+		panic("Couldn't contact grpc server")
+	}
+
 	// HTTP R-Proxy grpc-gateway
 	mux := proxy_runtime.NewServeMux(proxy_runtime.WithMarshalerOption(proxy_runtime.MIMEWildcard, &proxy_runtime.JSONPb{OrigName: true, EmitDefaults: true}))
-	err = chatd_v1.RegisterCampaignServiceHandler(ctx, mux, conn)
+	err = chat_api_v1.RegisterChatServiceHandler(ctx, mux, conn)
 	if err != nil {
 		panic("Cannot serve chatd http api v1")
 	}
 	go func() {
-		log.Println(fmt.Sprintf("Starting HTTP server on %s", "0.0.0.0:8080"))
+		log.Println(fmt.Sprintf("Starting HTTP server on %s", s.bindHTTP))
 		//handlerEnriched := cors(preMuxRouter(mux))
-		errc <- errors.Wrap(http.ListenAndServe("0.0.0.0:8080", mux), "Cannot start HTTP server")
+		errc <- errors.Wrap(http.ListenAndServe(s.bindHTTP, mux), "Cannot start HTTP server")
 	}()
 
 	fatalError := <-errc

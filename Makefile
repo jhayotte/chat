@@ -16,6 +16,7 @@ lint: ## Lint the files
 
 protos: ## Build the proto file
 	@echo "$@"
+	@$(foreach file,$(PROTO_FILES),protoc $(PROTOC_FLAGS)  --go_out=plugins=grpc:. $(file);)
 	@$(foreach file,$(PROTO_FILES),protoc $(PROTOC_FLAGS) --grpc-gateway_out=logtostderr=true,allow_delete_body=true:. $(file);)
 	@$(foreach file,$(PROTO_FILES),protoc $(PROTOC_FLAGS) --swagger_out=logtostderr=true,allow_delete_body=true:. $(file);)
 
